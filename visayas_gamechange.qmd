@@ -1,0 +1,1344 @@
+---
+title: "Visayas as the Potential Game Changer"
+subtitle: "Data stories for increased rice productivity"
+# format: revealjs
+format:
+  revealjs:
+    css: custom-styles.css
+    touch: true
+    controls: true
+    slide-number: true
+    transition: fade
+    chalkboard: 
+      buttons: false
+    # logo: philricelogo2.png
+    footer: "PhilRice Data Analytics Center"
+    incremental: true
+    # theme: beige
+    # width: 1440
+    # height: 750
+    # margin: 0.01
+editor: visual
+---
+
+```{r}
+#| label: libraries
+library(tidyverse)
+library(plotly)
+library(lubridate)
+library(googledrive)
+library(leaflet)
+
+source("Vis_utils.R")
+source("utils.R")
+```
+
+```{r}
+#| label: data
+#| echo: false
+#| 
+psadata <-  readRDS("psadata.rds")
+
+visayas_prov  <-  readRDS("visayas_prov.rds")
+
+provpsa_annual<- 
+psadata |> 
+  filter(PERIOD_CODE==3) |> 
+  filter(LOCATION_TYPE=="PROVINCE") |> 
+  mutate(location2 = clean_location(LOCATION)) 
+  
+
+
+ensemble_proj <-readRDS("ensemble_proj.rds")
+
+
+ensemble_sua_summaries <- readRDS("ensembsua.rds")
+
+ensemb_forecast2030 <-  readRDS("ensemb_forecast2030.rds")
+
+ensemble_sua2030 <-  readRDS("ensemble_sua2030.rds")
+
+visayas_annual <- 
+provpsa_annual |> 
+  filter(str_to_title(location2) %in% visayas_prov) |>
+  # filter(PERIOD_CODE==3) |>
+  group_by(eco_code,date) |> 
+  summarise(PRODUCTION = sum(PRODUCTION,na.rm = T),
+            AREA_HARVESTED=sum(AREA_HARVESTED,na.rm = T),
+            YIELD = mean(YIELD,na.rm = T)) |> 
+  mutate(LOCATION ="VISAYAS")
+
+
+
+  
+
+nat_annual<- 
+  psadata |> 
+  filter(PERIOD_CODE==3) |> 
+  filter(LOCATION_TYPE=="NATIONAL") |> 
+  select(LOCATION,eco_code,date,PRODUCTION:YIELD)
+
+
+
+
+
+
+```
+
+```{r}
+#| label: historical
+#| echo: false
+
+
+ann_data <-  nat_annual |> 
+  filter(eco_code==1) |> 
+  bind_rows(visayas_annual |> 
+              filter(eco_code==1)
+  )
+
+
+ann_plot <- 
+plot_ly(ann_data,
+        x = ~year(date), 
+        y = ~PRODUCTION,
+        color = ~LOCATION,
+        colors = c("#3fd460","#F1A63C"),
+        type = 'bar') |> 
+  layout(title = "National Annual Production (1971 - Present)",
+         xaxis = list(title = "Year",
+                      rangeslider = list(visible = TRUE)),
+         yaxis = list(title = "Production in MT"),
+         barmode = "overlay")
+```
+
+## Current State of Visayas Rice Production {.tiny-text}
+
+```{r}
+#| label: prodshare
+#| echo:  false
+
+
+
+visnovis_ann <- 
+provpsa_annual |> 
+  mutate(visgroup = if_else(str_to_title(location2) %in% visayas_prov, 1,0)) |>
+  filter(PERIOD_CODE==3) |>
+  select(visgroup,eco_code,date,PRODUCTION:YIELD) |> 
+  group_by(visgroup,eco_code,date) |> 
+  summarise(PRODUCTION = sum(PRODUCTION,na.rm = T),
+            AREA_HARVESTED=sum(AREA_HARVESTED,na.rm = T),
+            YIELD = mean(YIELD,na.rm = T)) |> 
+  group_by(eco_code,date) |> 
+  add_count(wt=PRODUCTION,name='total') |> 
+  mutate(prod_share =(PRODUCTION/total)*100)
+
+
+vis_share <- 
+plot_ly(visnovis_ann |> 
+          ungroup() |> 
+          filter(eco_code==1) |> 
+          filter(visgroup==1),
+        x = ~date, 
+        y = ~prod_share,
+        type = 'scatter',
+        mode = 'lines+markers') |> 
+  layout(title = "Share of Visayas to total production",
+         xaxis = list(title = "Date",
+                      rangeslider = list(visible = TRUE)),
+         yaxis = list(title = "Share to total production"))
+
+
+
+ann_plot |> 
+  add_lines(y=~prod_share, x=~year(date),
+            color = "Production Share of Visayas",
+            data = visnovis_ann |> 
+              ungroup() |> 
+              filter(eco_code==1) |> 
+              filter(visgroup==1),
+            yaxis = 'y2',
+            line = list(color = "red", width = 4)) |> 
+    layout(
+    title = "Annual Production (1971-2024): Philippines and Visayas",
+    yaxis = list(title = "Production (MT)"),
+    yaxis2 = list(
+      title = "Share to total production (%)",
+      overlaying = "y",
+      side = "right",
+      titlefont = list(size = 12),
+      tickfont = list(size = 10),
+      standoff = 20  
+    ),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year"),
+    legend = list(x = 0.05, y = 0.95,
+                   bgcolor = "rgba(255, 255, 255, 0.5)"),
+    margin = list(r = 80)
+    ) |> 
+  config(displayModeBar=F,
+         responsive = T)
+
+```
+
+::: incremental
+::: tiny-text
+-   Steady increase in national production over the years.
+-   Visayas production remains constant.
+-   Visayas share has been declining since 2020.
+-   In 2024, it reached a record low of 15.95%. Lowest since 1990.
+:::
+:::
+
+## Yield Gap: Visayas vs National Average {.tiny-text}
+
+```{r}
+#| label: yieldgap
+#| echo: false
+
+
+
+yield_wide <-
+  ann_data |> 
+  select(LOCATION,date,YIELD) |> 
+  pivot_wider(names_from =LOCATION,
+              values_from = YIELD) |> 
+  mutate(YieldGap = PHILIPPINES - VISAYAS)
+
+
+plot_ly(yield_wide, x=~year(date)) |> 
+  add_lines(y = ~PHILIPPINES, name = "Philippines",
+            line = list(color = "#3fd460")) |> 
+  add_lines(y = ~VISAYAS, name = "Visayas",
+            line = list(color = "#F1A63C")
+            ) |> 
+  add_markers(y = ~PHILIPPINES, name = "Philippines", 
+              marker = list(color = '#3fd460'), 
+              hoverinfo = 'text',
+              text = ~paste0("Year: ", year(date),
+                             "<br>Philippines: ", round(PHILIPPINES, 2),
+                             "<br>Visayas: ", round(VISAYAS, 2),
+                             "<br>Yield Gap: ", round(YieldGap, 2)),
+              showlegend = FALSE) |> 
+    add_markers(y = ~VISAYAS, name = "Visayas", 
+              marker = list(color = '#F1A63C'), 
+              hoverinfo = 'text',
+              text = ~paste0("Year: ", year(date),
+                             "<br>Philippines: ", round(PHILIPPINES, 2),
+                             "<br>Visayas: ", round(VISAYAS, 2),
+                             "<br>Yield Gap: ", round(YieldGap, 2)),
+              showlegend = FALSE) |> 
+  add_bars(x = ~year(date), y = ~YieldGap, name = "Yield Gap",
+           marker = list(color = 'rgba(150, 180, 230, 0.2)'), yaxis = "y2",
+           hoverinfo = "skip") |>
+  layout(title ="Yield Comparison (1971 - Present)",
+         yaxis = list(title = "Yield in mt/ha",
+                      showspikes = TRUE),
+         yaxis2 = list(
+           overlaying = "y",
+           side = "right",
+           showgrid = FALSE,
+           title = "Yield Gap",
+           zeroline = FALSE
+         ),
+         xaxis = list(title = "YEAR",
+                      rangeslider = list(visible = TRUE),
+                      showspikes = TRUE,
+                      spikemode = "across",
+                      spikesnap = "cursor"
+                      ),
+         legend = list(x = 0.05, y = 0.95,
+                        bgcolor = "rgba(255, 255, 255, 0.5)"),
+         margin = list(r = 80)
+  ) |> 
+  config(displayModeBar=F,
+         responsive = T)
+
+```
+
+::: incremental
+::: tiny-text
+-   Average yield in Visayas is about 3.27 mt/ha in 2024.
+-   Yield gap between Philippines and Visayas continues to increase since 2010
+-   Highest yield gap in 2023, at about 0.93 mt/ha difference between Visayas and National average yield.
+-   While the national rice yield continues to show a steady upward trend, Visayas yield remains relatively stagnant.
+-   If this pattern persists, the yield gap between Visayas and the national average is expected to widen further in the coming years.
+:::
+:::
+
+## 2025-2030 Production Projection {.tiny-text}
+
+```{r}
+#| label: project
+#| echo: false
+
+
+
+
+all_project <- 
+ensemb_forecast2030 |> 
+  filter(loc2=="vis") |> 
+  group_by(year) |> 
+  summarise(production = sum(production,na.rm = T),
+            yield = mean(yield,na.rm = T)) |>
+  mutate(location="Visayas") |> 
+  bind_rows(ensemb_forecast2030 |> 
+              filter(loc2=="phl") |> 
+              select(-loc2)
+  ) |> 
+  filter(year<=2030)
+
+
+vis_share_proj <- 
+all_project |> 
+  select(year,location,production) |> 
+  pivot_wider(names_from = location,
+              values_from = production) |> 
+  mutate(prod_share = (Visayas/PHILIPPINES)*100)
+
+plot_ly(all_project,
+        x = ~year, 
+        y = ~production,
+        color = ~location,
+        colors = c("#3fd460","#F1A63C"),
+        type = 'bar') |> 
+  layout(barmode = "overlay") |>
+  add_lines(y=~prod_share, x=~year,
+            color = "Production Share of Visayas",
+            data = vis_share_proj|> 
+              filter(year>2024),
+            yaxis = 'y2',
+            line = list(color = "red", width = 4)) |> 
+  layout(
+    title = "Projected Production (2025-2030): Philippines and Visayas",
+    yaxis = list(title = "Production (MT)"),
+    yaxis2 = list(
+      title = "Share to total production (%)",
+      overlaying = "y",
+      side = "right",
+      titlefont = list(size = 12),
+      tickfont = list(size = 10),
+      standoff = 20  
+    ),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year"),
+    legend = list(
+      orientation = 'h', 
+      x = 0.5,            
+      y = -0.2, 
+      xanchor = 'center'
+    ),
+    margin = list(r = 80)
+    ) |> 
+  config(displayModeBar=F,
+         responsive = T)
+  
+
+```
+
+### If trends continue . . .
+
+::: incremental
+-   Visayas production is projected to remain at around 3.2 million metric tons.
+-   Consequently, its share of total production will likely stay between 15% and 16%.
+:::
+
+## 2025-2030 Yield Projections {.tiny-text}
+
+```{r}
+#| label: yieldproject
+#| echo: false
+
+
+
+
+yield_wide_project <-
+  all_project |> 
+  select(-production) |> 
+  pivot_wider(names_from =location,
+              values_from = yield) |> 
+  mutate(YieldGap = PHILIPPINES - Visayas)
+
+
+plot_ly(yield_wide_project, x=~year) |> 
+  add_lines(y = ~PHILIPPINES, name = "Philippines",
+            line = list(color = "#3fd460")) |> 
+  add_lines(y = ~Visayas, name = "Visayas",
+            line = list(color = "#F1A63C")
+            ) |> 
+  add_markers(y = ~PHILIPPINES, name = "Philippines", 
+              marker = list(color = '#3fd460'), 
+              hoverinfo = 'text',
+              text = ~paste0("Year: ", year,
+                             "<br>Philippines: ", round(PHILIPPINES, 2),
+                             "<br>Visayas: ", round(Visayas, 2),
+                             "<br>Yield Gap: ", round(YieldGap, 2)),
+              showlegend = FALSE) |> 
+    add_markers(y = ~Visayas, name = "Visayas", 
+              marker = list(color = '#F1A63C'), 
+              hoverinfo = 'text',
+              text = ~paste0("Year: ", year,
+                             "<br>Philippines: ", round(PHILIPPINES, 2),
+                             "<br>Visayas: ", round(Visayas, 2),
+                             "<br>Yield Gap: ", round(YieldGap, 2)),
+              showlegend = FALSE) |> 
+  add_bars(x = ~year, y = ~YieldGap, name = "Yield Gap",
+           marker = list(color = 'rgba(150, 180, 230, 0.2)'), yaxis = "y2",
+           hoverinfo = "skip") |>
+  layout(title ="Projected Yield Comparison (2025-2030)",
+         yaxis = list(title = "Yield in mt/ha",
+                      # range = c(0, NA),
+                      # tick0 = 0,  
+                      # dtick=0.5,
+                      showspikes = TRUE),
+         yaxis2 = list(
+           overlaying = "y",
+           side = "right",
+           showgrid = FALSE,
+           title = "Yield Gap",
+           zeroline = FALSE
+         ),
+         xaxis = list(title = "YEAR",
+                      showspikes = TRUE,
+                      spikemode = "across",
+                      spikesnap = "cursor"
+                      ),
+         legend = list(
+           orientation = 'h', 
+           x = 0.5,            
+           y = -0.2, 
+           xanchor = 'center'
+         ),
+         margin = list(r = 80)
+  ) |> 
+  config(displayModeBar=F,
+         responsive = T)
+
+```
+
+### If trends continue . . .
+
+::: incremental
+::::{.tiny-text}
+
+-   Average yield in Visayas will stay below 3.5 mt/ha until 2030 while the national is expected to gradually increase up to 4.4 mt/ha.
+-   Yield gap between Philippines and Visayas will continue to increase and cross 1 mt/ha as early as 2026. 
+::::
+:::
+
+## Projected rice self sufficiency levels {.tiny-text}
+
+```{r}
+
+phl_vis_sua <- 
+ensemble_sua2030 |> 
+  filter(location %in% c("Philippines","Visayas")) |> 
+  mutate(year = as.numeric(as.character(year)))
+
+
+
+
+
+plot_ly(all_project |> 
+          mutate(location = str_to_title(location)),
+        x = ~year, 
+        y = ~production,
+        color = ~location,
+        colors = c("#3fd460","#F1A63C"),
+        type = 'bar') |> 
+  layout(barmode="overlay") |> 
+add_lines(x = ~year, 
+        y = ~SuffRatio,
+        data=phl_vis_sua |> 
+          filter(location=="Philippines"),
+        # color = ~location,
+        line = list(color = "red"),
+        name = "Philippines SSR",
+        hoverinfo='text',
+        text = ~paste("Philippines SSR:",round(SuffRatio,2),"%"),
+         yaxis = 'y2') |> 
+  add_lines(x = ~year, 
+        y = ~SuffRatio,
+        data=phl_vis_sua |> 
+          filter(location=="Visayas") |> 
+          mutate(year = as.numeric(as.character(year))),
+        # color = ~location,
+        line = list(color = "blue"),
+        name = "Visayas SSR",
+        hoverinfo='text',
+        text = ~paste("Visayas SSR:",round(SuffRatio,2),"%"),
+         yaxis = 'y2') |> 
+  layout(
+    title = "Production and Rice Self Sufficiency, 2025-2030",
+    yaxis = list(title = "Production (MT)"),
+    yaxis2 = list(
+      title = "Sufficiency Ratio",
+      overlaying = "y",
+      side = "right",
+      titlefont = list(size = 12),
+      tickfont = list(size = 10),
+      standoff = 20
+    ),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year"),
+    legend = list(
+      orientation = 'h', 
+      x = 0.5,            
+      y = -0.2, 
+      xanchor = 'center'
+    ),
+    margin = list(r = 80)
+  ) |>
+  config(displayModeBar=F,
+         responsive = T)
+
+```
+
+### If trends continue . . .
+
+::: incremental
+::: tiny-text
+-   Growing population drives higher rice demand
+-   But supply in Visayas projected to remain almost constant.
+-   achieving 100% rice self-sufficiency will become increasingly challenging for the region.
+:::
+:::
+
+## Target production and Rice Self Sufficiency {.tiny-text}
+
+```{r}
+
+
+sua_new5 <-  readRDS("sua_new5.rds")
+phl_sua_target <- 
+sua_new5$sua |> 
+  filter(location=="Philippines") |> 
+  filter(eco=="alleco") |> 
+  filter(year %in% 2025:2030)
+
+
+vis_sua_target <- 
+sua_new5$sua |> 
+  filter(location %in% str_to_lower(visayas_prov)) |>
+  filter(eco=="alleco") |> 
+  filter(year>2024)|> 
+  filter(year %in% 2025:2030)
+
+
+
+Targetsuffratio <- 
+  phl_sua_target |> 
+  ungroup() |> 
+  select(year,location,production = aProduction,SuffRatio,Yield) |> 
+  bind_rows(vis_sua_target |> 
+              ungroup() |> 
+              mutate(location ="Visayas") |> 
+              group_by(year, location) |> 
+              summarise(SuffRatio = mean(SuffRatio,na.rm=TRUE),
+                        production = sum(aProduction,na.rm=TRUE),
+                        Yield = mean(Yield,na.rm=TRUE))
+            )
+
+
+
+
+
+plot_ly(Targetsuffratio |> 
+          filter(year>2024),
+        x = ~as.numeric(as.character(year)), 
+        y = ~production,
+        color = ~location,
+        colors = c("#3fd460","#F1A63C"),
+        type = 'bar') |> 
+  layout(barmode="overlay") |> 
+add_lines(x = ~year, 
+        y = ~SuffRatio,
+        data=Targetsuffratio |> 
+          filter(location=="Philippines") |> 
+          mutate(year = as.numeric(as.character(year))),
+        # color = ~location,
+        line = list(color = "red"),
+        name = "Philippines SSR",
+         yaxis = 'y2') |> 
+  add_lines(x = ~year, 
+        y = ~SuffRatio,
+        data=Targetsuffratio |> 
+          filter(location=="Visayas") |> 
+          mutate(year = as.numeric(as.character(year))),
+        # color = ~location,
+        line = list(color = "blue"),
+        name = "Visayas SSR",
+         yaxis = 'y2') |>
+  layout(
+    title = "Target Production and SSR (2025-2028): Philippines and Visayas",
+    yaxis = list(title = "Production (MT)"),
+    yaxis2 = list(
+      title = "Self Sufficiency Ratio (SSR)",
+      overlaying = "y",
+      side = "right",
+      titlefont = list(size = 12),
+      tickfont = list(size = 10),
+      standoff = 20  
+    ),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year"),
+    legend = list(x = 0.05, y = 0.95),
+    margin = list(r = 80)
+    )
+
+```
+
+::: columns
+::: {.column width="50%"}
+::: fragment
+#### Target direction. . .
+:::
+
+::: incremental
+::: tiny-text
+-   **100 % Rice Self Sufficiency** by 2030
+-   Requiring at least **28.67 million MT** total palay production in the country.
+-   **4.55 million MT** (*about 16 % of total*) to be produced from Visayas.
+:::
+:::
+:::
+
+::: {.column width="50%"}
+::: fragment
+#### Target Vs Projected 2030
+:::
+
+::: incremental
+::: tiny-text
+-   Target production in Visayas is **1.4 million MT** higher than projected.
+-   Target Rice Self Sufficiency in Visayas is **37.84 %** higher than projected.
+:::
+:::
+:::
+:::
+
+## Required yield performance for rice self sufficiency {.tiny-text}
+
+```{r}
+
+
+plot_ly(Targetsuffratio |> 
+          filter(year>2024),
+        x = ~as.numeric(as.character(year)), 
+        y = ~production,
+        color = ~location,
+        colors = c("#3fd460","#F1A63C"),
+        type = 'bar') |> 
+  add_lines(x = ~year, 
+        y = ~Yield,
+        data=Targetsuffratio |> 
+          filter(location=="Philippines") |> 
+          mutate(year = as.numeric(as.character(year))),
+        # color = ~location,
+        line = list(color = "red",
+                    dash = "dash"),
+        name = "Philippines YIELD",
+         yaxis = 'y2') |> 
+    add_lines(x = ~year, 
+        y = ~Yield,
+        data=Targetsuffratio |> 
+          filter(location=="Visayas") |> 
+          mutate(year = as.numeric(as.character(year))),
+        # color = ~location,
+        line = list(color = "blue",
+                    dash = "dash"),
+        name = "Visayas Yield",
+         yaxis = 'y2') |> 
+  # add_lines(x = ~year, 
+  #           y = ~SuffRatio,
+  #           data=Targetsuffratio |> 
+  #             filter(location=="Philippines") |> 
+  #             mutate(year = as.numeric(as.character(year))),
+  #           # color = ~location,
+  #           line = list(color = "red"),
+  #           name = "Philippines SSR",
+  #           yaxis = 'y2') |> 
+  # add_lines(x = ~year, 
+  #           y = ~SuffRatio,
+  #           data=Targetsuffratio |> 
+  #             filter(location=="Visayas") |> 
+  #             mutate(year = as.numeric(as.character(year))),
+  #           # color = ~location,
+  #           line = list(color = "blue"),
+  #           name = "Visayas SSR",
+  #           yaxis = 'y2') |>
+  layout(
+    title = "Target Production and Yield (2025-2028): Philippines and Visayas",
+    yaxis = list(title = "Yield (MT/Ha)"),
+    yaxis2 = list(
+      title = "Yield mt/ha",
+      overlaying = "y",
+      side = "right",
+      titlefont = list(size = 12),
+      tickfont = list(size = 10)
+    ),
+    hovermode = 'x unified',
+    barmode = 'overlay',
+    xaxis = list(title = "Year"),
+    legend = list(x = 0.05, y = 0.95),
+    margin = list(r = 80)
+    )
+
+
+
+```
+
+::: fragment
+To achieve rice self-sufficiency by 2030,
+:::
+
+::: incremental
+::: tiny-text
+-   the Visayas region must gradually boost productivity and raise its average yield to at least **4.55 MT/ha.**
+-   This target represents a **139%** increase compared to the historical average yield as of 2024 and current projections.
+:::
+:::
+
+## Zooming in on provincial productivity {.tiny-text}
+
+```{r}
+#| label: prov
+#| echo:  false
+#| fig-width: 10
+
+
+vis_annual <- 
+  provpsa_annual |> 
+    mutate(visgroup = if_else(str_to_title(location2) %in% visayas_prov, 1,0)) |>
+  filter(PERIOD_CODE==3) |>
+  ungroup() |> 
+  select(visgroup,location2,eco_code,date,PRODUCTION:YIELD) |> 
+  filter(visgroup==1) |> 
+  filter(eco_code==1) |> 
+  mutate(yr = year(date),
+         location2 = str_to_title(location2))
+
+vis4share <- 
+  vis_annual |> 
+  mutate(visg2 = if_else(location2 %in% c("Iloilo","Bohol","Leyte","Negros Occidental"),
+                         1,0)) |> 
+  group_by(date,visg2) |> 
+  summarise(PRODUCTION=sum(PRODUCTION,na.rm=TRUE)) |> 
+  group_by(date) |> 
+  add_count(wt=PRODUCTION,name="total") |> 
+  mutate(visshare = (PRODUCTION/total)*100) |> 
+  filter(visg2==1) |> 
+  mutate(yr = year(date))
+
+pal16 <- c(
+  "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+  "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
+  "#bcbd22", "#17becf", "#393b79", "#637939",
+  "#8c6d31", "#843c39", "#7b4173", "#5254a3"
+)
+
+plot_ly() |> 
+  add_trace(x=~yr,
+        y=~PRODUCTION,
+        data = vis_annual |> 
+          filter(yr>=2010) |> 
+          filter(location2 %in% c("Iloilo","Bohol","Leyte","Negros Occidental")),
+        color = ~location2,
+        # colors = pal16,
+        type='scatter',
+        mode ='lines+markers'
+        ) |>
+  add_bars(x = ~yr, y = ~visshare,
+           data= vis4share |> 
+             filter(yr>=2010),
+           name = "Share of 4 provinces (%) to total production in Visayas",
+           marker = list(color = 'rgba(150, 180, 230, 0.2)'), yaxis = "y2") |> 
+    layout(
+    title = "Productivity of selected provinces in Visayas",
+    yaxis = list(title = "Production (MT)"),
+    yaxis2 = list(
+      title = "Share to total production in Visayas (%)",
+      overlaying = "y",
+      side = "right",
+      titlefont = list(size = 12),
+      tickfont = list(size = 10),
+      standoff = 20  
+    ),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year",
+                 rangeslider="visible"),
+    legend = list(
+      orientation = 'h', 
+      x = 0.5,            
+      y = -0.6, 
+      xanchor = 'center'),
+    margin = list(r=80)
+    )|> 
+  config(displayModeBar=F,
+         responsive = T)
+```
+
+-   Bohol, Iloilo, Leyte, and Negros Occidental together account for at least 60% of total rice production in the Visayas.
+
+-   Iloilo has consistently led the region in total production, with an estimated 831 thousand metric tons of palay in 2024.
+
+## Zooming in on provincial productivity {.tiny-text}
+
+```{r}
+ann_plot <- 
+plot_ly(ann_data,
+        x = ~year(date), 
+        y = ~PRODUCTION,
+        color = ~LOCATION,
+        colors = c("#3fd460","#F1A63C"),
+        type = 'bar')
+plot_ly() |> 
+  add_trace(x=~yr,
+        y=~YIELD,
+        data = vis_annual |> 
+          filter(yr>=2010) |> 
+          filter(location2 %in% c("Iloilo","Bohol","Leyte","Negros Occidental")),
+        color = ~location2,
+        # colors = pal16,
+        type='scatter',
+        mode ='lines+markers'
+        ) |>
+  add_bars(x = ~year(date), y = ~PRODUCTION,
+           data= ann_data |> 
+             filter(year(date)>=2010) |> 
+             filter(LOCATION=="VISAYAS"),
+           name = "Total production in Visayas (MT)",
+           marker = list(color = 'rgba(150, 180, 230, 0.2)'), yaxis = "y2") |> 
+    layout(
+    title = "Average Yield of selected provinces in Visayas",
+    yaxis = list(title = "Yield (MT/Ha)"),
+    yaxis2 = list(
+      title = "Total production in Visayas (MT)",
+      overlaying = "y",
+      side = "right",
+      titlefont = list(size = 12),
+      tickfont = list(size = 10),
+      standoff = 20  
+    ),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year",
+                 rangeslider="visible"),
+    legend = list(
+      orientation = 'h', 
+      x = 0.5,            
+      y = -0.6, 
+      xanchor = 'center'),
+    margin = list(r=80)
+    )|> 
+  config(displayModeBar=F,
+         responsive = T)
+```
+
+-   Leyte has been the most consistently high-yielding province in the Visayas, averaging at least 4 metric tons per hectare over the past 20 years.
+
+
+## Potential interventions based on DAC RBFHS Yield Model[^1] {.smaller}
+
+| Seed Class                                  | DS        | WS        |
+|---------------------------------------------|-----------|-----------|
+|                                             | **kg/ha** | **kg/ha** |
+| **SEED CLASS**                              |           |           |
+| High Quality Inbred Seed Use vs Low Quality | 20        | 20        |
+| Hybrid seed use vs Low Quality inbred use   | 340       | 320       |
+| **FERTILIZER**                              |           |           |
+| Urea                                        | 80        | 80        |
+| Complete                                    | 80        | 70        |
+
+
+
+[^1]: **Note:** Yield increments represent estimated average marginal effects conditional on the model specification. These estimates should not be interpreted as causal or deterministic predictions. They reflect associations under the ceteris paribus assumption and may be influenced by unobserved variables, model assumptions, or context-specific conditions.
+
+# (ANNEX) Provincial details
+
+## Rice Self Sufficiency in BOHOL {.tiny-text auto-animate="TRUE"}
+
+
+::: fragment
+```{r}
+
+
+
+
+bohol_target <- 
+  vis_sua_target |> 
+  filter(location=="bohol") |> 
+  mutate(year = as.numeric(as.character(year)))
+
+bohol_project <- 
+  ensemble_sua2030 |> 
+  filter(location=="bohol") |> 
+  mutate(year = as.numeric(as.character(year)))
+
+
+
+plot_ly(x=~year) |> 
+  add_trace(y=~SuffRatio,
+            data =bohol_target,
+            line = list(color ="#3fd460"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Target SSR") |> 
+  add_trace(y=~SuffRatio,
+            data=bohol_project,
+            line = list(color ="#F1A63C"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Projected SSR") |> 
+      layout(
+    title = "Rice Self Sufficiency in Bohol: Target Vs Projected",
+    yaxis = list(title = "Sufficiency Ratio"),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year"),
+    legend = list(
+      orientation = 'h', 
+      x = 0.5,            
+      y = -0.2, 
+      xanchor = 'center')
+    )|> 
+  config(displayModeBar=F,
+         responsive = T)
+
+
+```
+:::
+
+## Target Production in BOHOL {.tiny-text auto-animate="TRUE"}
+
+```{r}
+
+plot_ly(x=~year) |> 
+  add_trace(y=~aProduction,
+            data =bohol_target,
+            line = list(color ="#3fd460"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Target production") |> 
+  add_trace(y=~Production,
+            data=bohol_project,
+            line = list(color ="#F1A63C"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Projected production") |> 
+      layout(
+    title = "Palay Production in Bohol: Target Vs Projected",
+    yaxis = list(title = "Production (MT)"),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year"),
+    legend = list(
+      orientation = 'h', 
+      x = 0.5,            
+      y = -0.2, 
+      xanchor = 'center')
+    )|> 
+  config(displayModeBar=F,
+         responsive = T)
+
+
+```
+
+## Required Yield performance in BOHOL {.tiny-text auto-animate="TRUE"}
+
+```{r}
+
+plot_ly(x=~year) |> 
+  add_trace(y=~Yield,
+            data =bohol_target,
+            line = list(color ="#3fd460"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Target Yield") |> 
+  add_trace(y=~Yield,
+            data=bohol_project,
+            line = list(color ="#F1A63C"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Projected Yield") |> 
+      layout(
+    title = "Yield Performance in Bohol: Target Vs Projected",
+    yaxis = list(title = "Average Yield (mt/ha)"),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year"),
+    legend = list(
+      orientation = 'h', 
+      x = 0.5,            
+      y = -0.2, 
+      xanchor = 'center')
+    )|> 
+  config(displayModeBar=F,
+         responsive = T)
+
+
+```
+
+## Rice Self Sufficiency in ILOILO {.tiny-text auto-animate="TRUE"}
+
+
+::: fragment
+```{r}
+
+
+
+
+ILOILO_target <- 
+  vis_sua_target |> 
+  filter(location=="iloilo") |> 
+  mutate(year = as.numeric(as.character(year)))
+
+ILOILO_project <- 
+  ensemble_sua2030 |> 
+  filter(location=="iloilo") |> 
+  mutate(year = as.numeric(as.character(year)))
+
+
+
+plot_ly(x=~year) |> 
+  add_trace(y=~SuffRatio,
+            data =ILOILO_target,
+            line = list(color ="#3fd460"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Target SSR") |> 
+  add_trace(y=~SuffRatio,
+            data=ILOILO_project,
+            line = list(color ="#F1A63C"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Projected SSR") |> 
+      layout(
+    title = "Rice Self Sufficiency in Iloilo: Target Vs Projected",
+    yaxis = list(title = "Sufficiency Ratio"),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year"),
+    legend = list(
+      orientation = 'h', 
+      x = 0.5,            
+      y = -0.2, 
+      xanchor = 'center')
+    )|> 
+  config(displayModeBar=F,
+         responsive = T)
+
+
+```
+:::
+
+## Target Production in ILOILO {.tiny-text auto-animate="TRUE"}
+
+```{r}
+
+plot_ly(x=~year) |> 
+  add_trace(y=~aProduction,
+            data =ILOILO_target,
+            line = list(color ="#3fd460"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Target production") |> 
+  add_trace(y=~Production,
+            data=ILOILO_project,
+            line = list(color ="#F1A63C"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Projected production") |> 
+      layout(
+    title = "Palay Production in Iloilo: Target Vs Projected",
+    yaxis = list(title = "Production (MT)"),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year"),
+    legend = list(
+      orientation = 'h', 
+      x = 0.5,            
+      y = -0.2, 
+      xanchor = 'center')
+    )|> 
+  config(displayModeBar=F,
+         responsive = T)
+
+
+```
+
+## Required Yield performance in ILOILO {.tiny-text auto-animate="TRUE"}
+
+
+```{r}
+
+plot_ly(x=~year) |> 
+  add_trace(y=~Yield,
+            data =ILOILO_target,
+            line = list(color ="#3fd460"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Target Yield") |> 
+  add_trace(y=~Yield,
+            data=ILOILO_project,
+            line = list(color ="#F1A63C"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Projected Yield") |> 
+      layout(
+    title = "Yield Performance in Iloilo: Target Vs Projected",
+    yaxis = list(title = "Average Yield (mt/ha)"),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year"),
+    legend = list(
+      orientation = 'h', 
+      x = 0.5,            
+      y = -0.2, 
+      xanchor = 'center')
+    )|> 
+  config(displayModeBar=F,
+         responsive = T)
+
+
+```
+
+## Rice Self Sufficiency in LEYTE {.tiny-text auto-animate="TRUE"}
+
+
+::: fragment
+```{r}
+
+
+
+
+leyte_target <- 
+  vis_sua_target |> 
+  filter(location=="leyte") |> 
+  mutate(year = as.numeric(as.character(year))) |> 
+  filter(population>100000)
+
+leyte_project <- 
+  ensemble_sua2030 |> 
+  filter(location=="leyte") |> 
+  mutate(year = as.numeric(as.character(year))) |> 
+  filter(population>100000)
+
+
+
+plot_ly(x=~year) |> 
+  add_trace(y=~SuffRatio,
+            data =leyte_target,
+            line = list(color ="#3fd460"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Target SSR") |> 
+  add_trace(y=~SuffRatio,
+            data=leyte_project,
+            line = list(color ="#F1A63C"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Projected SSR") |> 
+      layout(
+    title = "Rice Self Sufficiency in Leyte: Target Vs Projected",
+    yaxis = list(title = "Sufficiency Ratio"),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year"),
+    legend = list(
+      orientation = 'h', 
+      x = 0.5,            
+      y = -0.2, 
+      xanchor = 'center')
+    )|> 
+  config(displayModeBar=F,
+         responsive = T)
+
+
+```
+:::
+
+## Target Production in LEYTE {.tiny-text auto-animate="TRUE"}
+
+
+```{r}
+
+plot_ly(x=~year) |> 
+  add_trace(y=~aProduction,
+            data =leyte_target,
+            line = list(color ="#3fd460"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Target production") |> 
+  add_trace(y=~Production,
+            data=leyte_project,
+            line = list(color ="#F1A63C"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Projected production") |> 
+      layout(
+    title = "Palay Production in Leyte: Target Vs Projected",
+    yaxis = list(title = "Production (MT)"),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year"),
+    legend = list(
+      orientation = 'h', 
+      x = 0.5,            
+      y = -0.2, 
+      xanchor = 'center')
+    )|> 
+  config(displayModeBar=F,
+         responsive = T)
+
+
+```
+
+## Required Yield performance in LEYTE {.tiny-text auto-animate="TRUE"}
+
+
+```{r}
+
+plot_ly(x=~year) |> 
+  add_trace(y=~Yield,
+            data =leyte_target,
+            line = list(color ="#3fd460"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Target Yield") |> 
+  add_trace(y=~Yield,
+            data=leyte_project,
+            line = list(color ="#F1A63C"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Projected Yield") |> 
+      layout(
+    title = "Yield Performance in Leyte: Target Vs Projected",
+    yaxis = list(title = "Average Yield (mt/ha)"),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year"),
+    legend = list(
+      orientation = 'h', 
+      x = 0.5,            
+      y = -0.2, 
+      xanchor = 'center')
+    )|> 
+  config(displayModeBar=F,
+         responsive = T)
+
+
+```
+
+## Rice Self Sufficiency in NEGROS OCCIDENTAL {.tiny-text auto-animate="TRUE"}
+
+
+::: fragment
+```{r}
+
+
+
+
+negros_target <- 
+  vis_sua_target |> 
+  filter(location=="negros occidental") |> 
+  mutate(year = as.numeric(as.character(year)))
+
+negros_project <- 
+  ensemble_sua2030 |> 
+  filter(location=="negros occidental") |> 
+  mutate(year = as.numeric(as.character(year))) 
+
+
+
+plot_ly(x=~year) |> 
+  add_trace(y=~SuffRatio,
+            data =negros_target,
+            line = list(color ="#3fd460"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Target SSR") |> 
+  add_trace(y=~SuffRatio,
+            data=negros_project,
+            line = list(color ="#F1A63C"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Projected SSR") |> 
+      layout(
+    title = "Rice Self Sufficiency in negros occidental: Target Vs Projected",
+    yaxis = list(title = "Sufficiency Ratio"),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year"),
+    legend = list(
+      orientation = 'h', 
+      x = 0.5,            
+      y = -0.2, 
+      xanchor = 'center')
+    )|> 
+  config(displayModeBar=F,
+         responsive = T)
+
+
+```
+:::
+
+## Target Production in NEGROS OCCIDENTAL {.tiny-text auto-animate="TRUE"}
+
+
+```{r}
+
+plot_ly(x=~year) |> 
+  add_trace(y=~aProduction,
+            data =negros_target,
+            line = list(color ="#3fd460"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Target production") |> 
+  add_trace(y=~Production,
+            data=negros_project,
+            line = list(color ="#F1A63C"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Projected production") |> 
+      layout(
+    title = "Palay Production in negros occidental: Target Vs Projected",
+    yaxis = list(title = "Production (MT)"),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year"),
+    legend = list(
+      orientation = 'h', 
+      x = 0.5,            
+      y = -0.2, 
+      xanchor = 'center')
+    )|> 
+  config(displayModeBar=F,
+         responsive = T)
+
+
+```
+
+## Required Yield performance in NEGROS OCCIDENTAL {.tiny-text auto-animate="TRUE"}
+
+
+```{r}
+
+plot_ly(x=~year) |> 
+  add_trace(y=~Yield,
+            data =negros_target,
+            line = list(color ="#3fd460"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Target Yield") |> 
+  add_trace(y=~Yield,
+            data=negros_project,
+            line = list(color ="#F1A63C"),
+            type='scatter',
+            mode = 'lines+markers',
+            name = "Projected Yield") |> 
+      layout(
+    title = "Yield Performance in negros occidental: Target Vs Projected",
+    yaxis = list(title = "Average Yield (mt/ha)"),
+    hovermode = 'x unified',
+    xaxis = list(title = "Year"),
+    legend = list(
+      orientation = 'h', 
+      x = 0.5,            
+      y = -0.2, 
+      xanchor = 'center')
+    )|> 
+  config(displayModeBar=F,
+         responsive = T)
+
+
+```
+
+

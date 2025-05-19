@@ -1,0 +1,1095 @@
+---
+title: "SUA function runs"
+format: html
+editor: visual
+---
+
+## Library
+
+```{r}
+library(shiny)
+library(bslib)
+library(leaflet)
+library(plotly)
+library(tidyverse)
+library(openxlsx)
+library(googledrive)
+library(htmltools)
+library(shinyWidgets)
+library(bsicons)
+library(DT)
+library(sf)
+library(geojsonio)
+library(shinymanager)
+library(waiter)
+library(shinycssloaders)
+library(shinyMatrix)
+library(shinyjs)
+library(htmlwidgets)
+library(zip)
+```
+
+## Source
+
+```{r source}
+source("utils.r")
+```
+
+## SUA default (2024-2028)
+
+```{r sua_def}
+
+
+sua_default4 <- pay_project(.data = basedata,
+                           .se_tab=NULL,
+                           .yield_serates = c(0,-0.004,-0.002,-0.003),
+                           .year_interval = 2024:2028,
+                           .yield_baserate=2.62/100,
+                           .yield_absrates = c(0.00693,rep(0,4)),
+                           .yield_changerates = rep(0,5),
+                           .area_baserate = 0,
+                           .area_absrates = rep(0,5),
+                           .area_absrates1 = rep(0,5),
+                           .area_absrates2 = rep(0,5),
+                           .yield_yearrates = 0,
+                           .area_yearrates = 0,
+                           .area_changerates = 0,
+                           .reg_provlist=reg_prov,
+                           .population = Pop_1625,
+                           .pastyr_foodcon=foodcon2023,
+                           .combine_summaries = TRUE,
+                           .suaproject = TRUE,
+                           .calam_matrix = matrix(c(0, rep(3,9)),
+                                                  nrow=2,ncol=5,
+                                                  dimnames = list(c("Semester 1", "Semester 2"),
+                                                                  2024:2028)
+                                                  ),
+                           .percap =120,
+                           .mr = 65.4/100,
+                           .processing=4/100,
+                           .seeduse = 49.05,
+                           .feeds_waste = 6.5/100,
+                           .buffer_days = 60,
+                           .projection_level = "national",
+                           .change_level="national",
+                           .change_coverage = "philippines",
+                           .include_prov = TRUE,
+                           .include_reg = TRUE,
+                           .include_nat = TRUE,
+                           .scenarioname = "" 
+)
+
+```
+
+## SUA 2024-2031 (try extend years)
+
+```{r sua_2031}
+
+sua_2031 <- pay_project(.data = basedata,
+                           .se_tab=NULL,
+                           .yield_serates = c(0,-0.004,-0.002,-0.003),
+                           .year_interval = 2024:2031,
+                           .yield_baserate=2.62/100,
+                           .yield_absrates = c(0.00693,rep(0,7)),
+                           .yield_changerates = rep(0,8),
+                           .area_baserate = 0,
+                           .area_absrates = rep(0,8),
+                           .area_absrates1 = rep(0,8),
+                           .area_absrates2 = rep(0,8),
+                           .yield_yearrates = 0,
+                           .area_yearrates = 0,
+                           .area_changerates = 0,
+                           .reg_provlist=reg_prov,
+                           .population = Pop_1625,
+                           .pastyr_foodcon=foodcon2023,
+                           .combine_summaries = TRUE,
+                           .suaproject = TRUE,
+                           .calam_matrix = matrix(c(5.544692657775778, rep(3,15)),
+                                                  nrow=2,ncol=8,
+                                                  dimnames = list(c("Semester 1", "Semester 2"),
+                                                                  2024:2031)
+                                                  ),
+                           .percap =120,
+                           .mr = 65.4/100,
+                           .processing=4/100,
+                           .seeduse = 49.05,
+                           .feeds_waste = 6.5/100,
+                           .buffer_days = 60,
+                           .projection_level = "national",
+                           .change_level="national",
+                           .change_coverage = "philippines",
+                           .include_prov = TRUE,
+                           .include_reg = TRUE,
+                           .include_nat = TRUE,
+                           .scenarioname = "" ,
+                        aggregate_type = "calendar"
+)
+
+sua_31_form <- 
+sua_format(sua_2031[["sua"]],
+           .location="Philippines")
+
+
+sua_31_form[[".supply"]] %>%
+  filter(!(variables %in% c("Area",
+                            "Base Palay Production",
+                            "Total Calamity loss"))) %>% 
+  rbind(sua_31_form[[".imports"]]) %>% 
+  mutate(group ="SUPPLY") %>% 
+  rbind(sua_31_form[[".demand"]] %>% 
+          mutate(group ="DEMAND")) %>% 
+  rbind(sua_31_form[[".ssr"]] %>% 
+          mutate(group = " ")) |> 
+  datatable(rownames = FALSE,
+            extensions = "Buttons",
+            options = list(pageLength = 30,
+                           ordering=FALSE,
+                           dom='Bt', 
+                           buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+                           # rowGroup = list(dataSrc = 7),
+                           columnDefs = list(
+                             list(visible = FALSE, targets=c(9,10)),
+                             list(targets=2:9, class="dt-right")
+                           )
+            )
+  ) %>% 
+  formatStyle(3:9,
+              `text-align` = "right") %>% 
+  formatCurrency(3:9,
+                 digits = 0,
+                 currency ="",
+                 interval=3,
+                 rows = 9:18,
+                 mark=",")
+```
+
+## SUA Crop Year (try different aggregate)
+
+```{r sua_cropyear}
+
+sua_cropyr <- 
+ pay_project(.data = basedata,
+                             .se_tab=NULL,
+                             .yield_serates = c(0,-0.004,-0.002,-0.003),
+                             .year_interval = 2024:2031,
+                             .yield_baserate=2.62/100,
+                             .yield_absrates = c(0.00693,rep(0,7)),
+                             .yield_changerates = rep(0,8),
+                             .area_baserate = 0,
+                             .area_absrates = rep(0,8),
+                             .area_absrates1 = rep(0,8),
+                             .area_absrates2 = rep(0,8),
+                             .yield_yearrates = 0,
+                             .area_yearrates = 0,
+                             .area_changerates = 0,
+                             .reg_provlist=reg_prov,
+                             .population = Pop_1625,
+                             .pastyr_foodcon=foodcon2023,
+                             .combine_summaries = TRUE,
+                             .suaproject = TRUE,
+                             .calam_matrix = matrix(c(5.544692657775778, rep(3,15)),
+                                                    nrow=2,ncol=8,
+                                                    dimnames = list(c("Semester 1", "Semester 2"),
+                                                                    2024:2031)
+                             ),
+                             .percap =120,
+                             .mr = 65.4/100,
+                             .processing=4/100,
+                             .seeduse = 49.05,
+                             .feeds_waste = 6.5/100,
+                             .buffer_days = 60,
+                             .projection_level = "national",
+                             .change_level="national",
+                             .change_coverage = "philippines",
+                             .include_prov = TRUE,
+                             .include_reg = TRUE,
+                             .include_nat = TRUE,
+                             aggregate_type = "cropping",
+                             .scenarioname = "" 
+)
+
+
+
+sua_cropyr_form <- 
+sua_format(sua_cropyr[["sua"]],
+           .location="Philippines")
+
+
+sua_cropyr_form[[".supply"]] %>%
+  filter(!(variables %in% c("Area",
+                            "Base Palay Production",
+                            "Total Calamity loss"))) %>% 
+  rbind(sua_cropyr_form[[".imports"]]) %>% 
+  mutate(group ="SUPPLY") %>% 
+  rbind(sua_cropyr_form[[".demand"]] %>% 
+          mutate(group ="DEMAND")) %>% 
+  rbind(sua_cropyr_form[[".ssr"]] %>% 
+          mutate(group = " ")) |> 
+  datatable(rownames = FALSE,
+            extensions = "Buttons",
+            options = list(pageLength = 30,
+                           ordering=FALSE,
+                           dom='Bt', 
+                           buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+                           # rowGroup = list(dataSrc = 7),
+                           columnDefs = list(
+                             list(visible = FALSE, targets=c(9,10)),
+                             list(targets=2:9, class="dt-right")
+                           )
+            )
+  ) %>% 
+  formatStyle(3:9,
+              `text-align` = "right") %>% 
+  formatCurrency(3:9,
+                 digits = 0,
+                 currency ="",
+                 interval=3,
+                 rows = 9:18,
+                 mark=",")
+
+```
+
+## SUA RCEF
+
+```{r sua_rcef}
+rcef_projectdata
+
+rcef_projectdata <-  read_csv("rcef_projectdata.csv")|>
+  rename(Production=proj_prod,
+         Area_Harvested = proj_area,
+         Yield =proj_yield) |> 
+  mutate(year = as.factor(year))
+
+  
+rcef_projectdata_model <-  read_csv("rcef_projectdata_modelbased.csv")|>
+  rename(Production=proj_prod,
+         Area_Harvested = proj_area,
+         Yield =proj_yield) |> 
+  mutate(year = as.factor(year))
+
+sua_rcef <-  sua_project(sem1_data =rcef_projectdata |> 
+                           filter(sem=="sem1"),
+                        sem2_data =rcef_projectdata |> 
+                           filter(sem=="sem2"),
+                        year_interval = 2024:2031,
+                        mr =0.654,
+                        percap = 120,
+                        seeduse = 49.05,
+                        processing = 0.04,
+                        pop_data = Pop_1625,
+                        feeds_waste = 0.065,
+                        buffer_days = 60,
+                        loss2024 = 495821,
+                        calam_matrix=matrix(c(5.544692657775778, rep(0,15)),
+                                                  nrow=2,ncol=8,
+                                                  dimnames = list(c("Semester 1", "Semester 2"),
+                                                                  2024:2031)
+                                                  ),
+                        aggregate_type = "cropping")
+
+
+sua_rcef_model <-  sua_project(sem1_data =rcef_projectdata_model |> 
+                           filter(sem=="sem1"),
+                        sem2_data =rcef_projectdata_model |> 
+                           filter(sem=="sem2"),
+                        year_interval = 2024:2031,
+                        mr =0.654,
+                        percap = 120,
+                        seeduse = 49.05,
+                        processing = 0.04,
+                        pop_data = Pop_1625,
+                        feeds_waste = 0.065,
+                        buffer_days = 60,
+                        loss2024 = 495821,
+                        calam_matrix=matrix(c(5.544692657775778, rep(0,15)),
+                                                  nrow=2,ncol=8,
+                                                  dimnames = list(c("Semester 1", "Semester 2"),
+                                                                  2024:2031)
+                                                  ),
+                        aggregate_type = "cropping")
+
+sua_rcef_form <- 
+sua_format(sua_rcef,
+           .location="Philippines")
+
+sua_rcef_form_model  <- 
+sua_format(sua_rcef_model,
+           .location="Philippines")
+
+sua_rcef_form[[".supply"]] %>%
+  filter(!(variables %in% c("Area",
+                            "Base Palay Production",
+                            "Total Calamity loss"))) %>% 
+  rbind(sua_rcef_form[[".imports"]]) %>% 
+  mutate(group ="SUPPLY") %>% 
+  rbind(sua_rcef_form[[".demand"]] %>% 
+          mutate(group ="DEMAND")) %>% 
+  rbind(sua_rcef_form[[".ssr"]] %>% 
+          mutate(group = " ")) |> 
+  datatable(rownames = FALSE,
+            extensions = "Buttons",
+            options = list(pageLength = 30,
+                           ordering=FALSE,
+                           dom='Bt', 
+                           buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+                           # rowGroup = list(dataSrc = 7),
+                           columnDefs = list(
+                             list(visible = FALSE, targets=c(9,10)),
+                             list(targets=2:9, class="dt-right")
+                           )
+            )
+  ) %>% 
+  formatStyle(3:9,
+              `text-align` = "right") %>% 
+  formatCurrency(3:9,
+                 digits = 0,
+                 currency ="",
+                 interval=3,
+                 rows = 9:18,
+                 mark=",")
+
+sua_rcef_form_model[[".supply"]] %>%
+  filter(!(variables %in% c("Area",
+                            "Base Palay Production",
+                            "Total Calamity loss"))) %>% 
+  rbind(sua_rcef_form_model[[".imports"]]) %>% 
+  mutate(group ="SUPPLY") %>% 
+  rbind(sua_rcef_form_model[[".demand"]] %>% 
+          mutate(group ="DEMAND")) %>% 
+  rbind(sua_rcef_form_model[[".ssr"]] %>% 
+          mutate(group = " ")) |> 
+  datatable(rownames = FALSE,
+            extensions = "Buttons",
+            options = list(pageLength = 30,
+                           ordering=FALSE,
+                           dom='Bt', 
+                           buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+                           # rowGroup = list(dataSrc = 7),
+                           columnDefs = list(
+                             list(visible = FALSE, targets=c(9,10)),
+                             list(targets=2:9, class="dt-right")
+                           )
+            )
+  ) %>% 
+  formatStyle(3:9,
+              `text-align` = "right") %>% 
+  formatCurrency(3:9,
+                 digits = 0,
+                 currency ="",
+                 interval=3,
+                 rows = 9:18,
+                 mark=",")
+
+sua_rcef_cal <-  sua_project(sem1_data =rcef_projectdata |> 
+                           filter(sem=="sem1"),
+                        sem2_data =rcef_projectdata |> 
+                           filter(sem=="sem2"),
+                        year_interval = 2024:2031,
+                        mr =0.654,
+                        percap = 120,
+                        seeduse = 49.05,
+                        processing = 0.04,
+                        pop_data = Pop_1625,
+                        feeds_waste = 0.065,
+                        buffer_days = 60,
+                        loss2024 = 495821,
+                        calam_matrix=matrix(c(5.544692657775778, rep(2,15)),
+                                                  nrow=2,ncol=8,
+                                                  dimnames = list(c("Semester 1", "Semester 2"),
+                                                                  2024:2031)
+                                                  ),
+                        aggregate_type = "calendar")
+
+sua_rcef_cal2 <-  sua_project(sem1_data =rcef_projectdata_model |> 
+                           filter(sem=="sem1"),
+                        sem2_data =rcef_projectdata_model |> 
+                           filter(sem=="sem2"),
+                        year_interval = 2024:2031,
+                        mr =0.654,
+                        percap = 120,
+                        seeduse = 49.05,
+                        processing = 0.04,
+                        pop_data = Pop_1625,
+                        feeds_waste = 0.065,
+                        buffer_days = 60,
+                        loss2024 = 495821,
+                        calam_matrix=matrix(c(5.544692657775778, rep(2,15)),
+                                                  nrow=2,ncol=8,
+                                                  dimnames = list(c("Semester 1", "Semester 2"),
+                                                                  2024:2031)
+                                                  ),
+                        aggregate_type = "calendar")
+
+```
+
+## RCEF contri to overall SUA project
+
+```{r rcefvall}
+rcefvall <- 
+sua_cropyr[["sua"]] |> 
+  filter(location=="Philippines",
+         eco == "alleco") |> 
+  left_join(sua_rcef |> 
+              rename_at(vars(sem1_area:SuffRatio),
+                        ~paste0("rcef_",.))
+  ) |>
+  mutate(rcef_consumer = rcef_Production_rice/(rcef_.percap/1000),
+         area_percent = (rcef_Area_Harvested/Area_Harvested)*100,
+         prod_percent = (rcef_Production/Production)*100,
+         aprod_percent = (rcef_aProduction/aProduction)*100,
+         riceprod_percent = (rcef_Production_rice/Production_rice)*100,
+         rcef_wYield = (rcef_Area_Harvested*rcef_Yield)/Area_Harvested,
+         yield_percent = (rcef_Yield/Yield)*100,
+         wyield_percent = (rcef_wYield/Yield)*100,
+         rcef_poppercent = (rcef_consumer/population)*100,
+         SSR_RCEF = (riceprod_percent/100)*SuffRatio,
+         SSR_percent = (SSR_RCEF/SuffRatio)*100
+         )
+  
+
+rcefvall2 <- 
+sua_cropyr[["sua"]] |> 
+  filter(location=="Philippines",
+         eco == "alleco") |> 
+  left_join(sua_rcef_model |> 
+              rename_at(vars(sem1_area:SuffRatio),
+                        ~paste0("rcef_",.))
+  ) |>
+  mutate(rcef_consumer = rcef_Production_rice/(rcef_.percap/1000),
+         area_percent = (rcef_Area_Harvested/Area_Harvested)*100,
+         prod_percent = (rcef_Production/Production)*100,
+         aprod_percent = (rcef_aProduction/aProduction)*100,
+         riceprod_percent = (rcef_Production_rice/Production_rice)*100,
+         rcef_wYield = (rcef_Area_Harvested*rcef_Yield)/Area_Harvested,
+         yield_percent = (rcef_Yield/Yield)*100,
+         wyield_percent = (rcef_wYield/Yield)*100,
+         rcef_poppercent = (rcef_consumer/population)*100,
+         SSR_RCEF = (riceprod_percent/100)*SuffRatio,
+         SSR_percent = (SSR_RCEF/SuffRatio)*100
+         )
+  
+write.xlsx(rcefvall2,"rcefvall4.xlsx")
+saveRDS(rcefvall,"rcefvall4.rds")
+```
+
+## New Basedata 2024
+
+```{r 2024basedata}
+
+psa2024 <-  readRDS("psa2024.rds")
+basedata2024 <- 
+psa2024[["semestral"]] |> 
+  mutate(loc = clean_location(loc),
+         var = case_when(var=="area"~"area3",
+                         .default = var)
+         )|> 
+  filter(eco!="alleco") |> 
+  filter(period!="annual") |>
+  filter(var!="prod") |> 
+  rename(location = loc,
+         sem=period,
+         type = loc_type,
+         value = val) |> 
+  full_join(basedata |> 
+              filter(var=='cagr') |> 
+              filter(str_detect(location,"NCR", negate=T)))
+
+
+
+```
+
+## SUA with new base2024
+
+```{r}
+sua_new4 <- pay_project(.data = basedata2024,
+                        .se_tab=NULL,
+                        .yield_serates = c(0,-0.004,-0.002,-0.003),
+                        .year_interval = 2024:2028,
+                        .yield_baserate=4.3/100,
+                        # .yield_baserate=0.0821,
+                        .yield_absrates = rep(0,5),
+                        .year_absrates =  0,
+                        .yield_changerates = rep(0,5),
+                        .area_baserate = 0,
+                        # .area_conschange1=sem1change,
+                        # .area_conschange2=sem2change ,
+                        
+                        .area_yearrates = c(0,0.03656799,0,0,0),
+                        .area_absrates = rep(0,5),
+                        .area_absrates1 = rep(0,5),
+                        .area_absrates2 = rep(0,5),
+                        # .yield_yearrates=c(0,0.08,0.0261,0.0261,0.0261),
+                        # .area_yearrates = c(0,10,0.0261,0.0261,0),
+                        .area_changerates = 0,
+                        .reg_provlist=reg_prov,
+                        .population = Pop_1625,
+                        .pastyr_foodcon=foodcon2023,
+                        .combine_summaries = TRUE,
+                        .suaproject = TRUE,
+                        .calam_matrix = matrix(c(0, 0,rep(3,8)),
+                                                  nrow=2,ncol=5,
+                                                  dimnames = list(c("Semester 1", "Semester 2"),
+                                                                  2024:2028)
+                                                  ),
+                           .percap =120,
+                           .mr = 63/100,
+                           .processing=4/100,
+                           .seeduse = 47.25,
+                           .feeds_waste = 6.5/100,
+                           .buffer_days = 60,
+                           .projection_level = "national",
+                           .change_level="national",
+                           .change_coverage = "philippines",
+                           .include_prov = TRUE,
+                           .include_reg = TRUE,
+                           .include_nat = TRUE,
+                           .scenarioname = "" ,
+                        baseline_include = TRUE
+)
+
+
+saveRDS(sua_new4,"sua_2024base120.rds")
+
+sua_new4_form <- 
+sua_format(sua_new4$sua,
+           .location="Philippines")
+
+sua_new4_form[[".supply"]] %>%
+  filter(!(variables %in% c("Area",
+                            "Base Palay Production",
+                            "Total Calamity loss"))) %>% 
+  rbind(sua_new4_form[[".imports"]]) %>% 
+  mutate(group ="SUPPLY") %>% 
+  rbind(sua_new4_form[[".demand"]] %>% 
+          mutate(group ="DEMAND")) %>% 
+  rbind(sua_new4_form[[".ssr"]] %>% 
+          mutate(group = " ")) |> 
+  datatable(rownames = FALSE,
+            extensions = "Buttons",
+            options = list(pageLength = 30,
+                           ordering=FALSE,
+                           dom='Bt', 
+                           buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+                           # rowGroup = list(dataSrc = 7),
+                           columnDefs = list(
+                             list(visible = FALSE, targets=c(9,10)),
+                             list(targets=2:9, class="dt-right")
+                           )
+            )
+  ) %>% 
+  formatStyle(3:9,
+              `text-align` = "right") %>% 
+  formatCurrency(3:9,
+                 digits = 0,
+                 currency ="",
+                 interval=3,
+                 rows = 9:18,
+                 mark=",")
+
+
+```
+
+## Sua with base 2024 and project until 2030
+
+```{r}
+sua_new5 <- pay_project(.data = basedata2024,
+                        .se_tab=NULL,
+                        .yield_serates = c(0,-0.004,-0.002,-0.003),
+                        .year_interval = 2024:2031,
+                        .yield_baserate=4.3/100,
+                        .yield_absrates = 0,
+                        # .yield_absrates =c(0,0.005,rep(0.0105,6)),
+                        # .yield_absrates = rep(0,7),
+                        .year_absrates =  0,
+                        .yield_changerates = 0,
+                        .area_baserate = 0,
+                        # .area_conschange1=sem1change,
+                        # .area_conschange2=sem2change ,
+                        .yield_yearrates = 0,
+                        .area_yearrates = c(0,0.03656799,0,0,0,0,0,0),
+                        .area_absrates = rep(0,8),
+                        .area_absrates1 = rep(0,8),
+                        .area_absrates2 = rep(0,8),
+                        # .yield_yearrates=c(0,0.08,0.0261,0.0261,0.0261),
+                        # .area_yearrates = c(0,10,0.0261,0.0261,0),
+                        .area_changerates = 0,
+                        .reg_provlist=reg_prov,
+                        .population = Pop_1625c,
+                        .pastyr_foodcon=foodcon2023,
+                        .combine_summaries = TRUE,
+                        .suaproject = TRUE,
+                        .calam_matrix = matrix(c(0, 0,rep(3,14)),
+                                                  nrow=2,ncol=8,
+                                                  dimnames = list(c("Semester 1", "Semester 2"),
+                                                                  2024:2031)
+                                                  ),
+                           .percap =122.7,
+                           .mr = 63/100,
+                           .processing=4/100,
+                           .seeduse = 47.25,
+                           .feeds_waste = 6.5/100,
+                           .buffer_days = 60,
+                           .projection_level = "national",
+                           .change_level="national",
+                           .change_coverage = "philippines",
+                           .include_prov = TRUE,
+                           .include_reg = TRUE,
+                           .include_nat = TRUE,
+                           .scenarioname = "" ,
+                        # aggregate_type = "cropping",
+                        baseline_include = TRUE
+)
+
+View(sua_new5$full_projection |> filter(location =="philippines"))
+
+sua_new5$sua|> filter(location =="Philippines") |> select(year,eco,prod_rate)
+
+saveRDS(sua_new5cropyear,"sua_2024base120.rds")
+
+saveRDS(sua_new5,"sua_new5.rds")
+sua_new5_form <- 
+sua_format(sua_new5$sua,
+           .location="Philippines")
+
+
+sua_new5c_form <- 
+sua_format(sua_new5cropyear$sua,
+           .location="Philippines")
+
+sua_new5_form[[".supply"]] %>%
+  filter(!(variables %in% c("Base Palay Production",
+                            "Total Calamity loss"))) %>% 
+  rbind(sua_new5_form[[".imports"]]) %>% 
+  mutate(group ="SUPPLY") %>% 
+  rbind(sua_new5_form[[".demand"]] %>% 
+          mutate(group ="DEMAND")) %>% 
+  rbind(sua_new5_form[[".ssr"]] %>% 
+          mutate(group = " ")) |> 
+  datatable(rownames = FALSE,
+            extensions = "Buttons",
+            options = list(pageLength = 30,
+                           ordering=FALSE,
+                           dom='Bt', 
+                           buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+                           # rowGroup = list(dataSrc = 7),
+                           columnDefs = list(
+                             list(visible = FALSE, targets=9)
+                             # list(targets=2:9, class="dt-right")
+                           )
+            )
+  ) %>% 
+  formatStyle(3:9,
+              `text-align` = "right") %>% 
+  formatCurrency(3:9,
+                 digits = 0,
+                 currency ="",
+                 interval=3,
+                 rows = 9:18,
+                 mark=",")
+
+
+
+
+```
+
+## 
+
+## multiple PCs and MRs 2024-2030
+
+```{r}
+
+grid
+
+grid <-  expand.grid(.mr = c(0.63,0.654),
+                     .percap = c(100,110,120,122.7,130,136))
+
+grid2 <- 
+  data.frame(prodrate = c(0.05,0.03,0.015,0.0104),
+             yield2025rate =c(0.0475,0.026,0.01,0.005),
+             yieldotherrate=c(0.053,0.031,0.0155,0.0105)
+  ) |> 
+  crossing(.mr = c(0.63,0.654),
+           .percap = c(122.7,135))
+
+c(0,0.0475,rep(0.053,5))
+grid2 <- expand.grid(.yieldabsrate = c(c(0,0.0475,rep(0.053,5)),1),
+                     .mr = c(0.63,0.654),
+                     .percap = c(122.7,135))
+
+
+gridresults2 <-  pmap(grid2,
+                     ~pay_project(.data = basedata2024,
+                        .se_tab=NULL,
+                        .yield_serates = c(0,-0.004,-0.002,-0.003),
+                        .year_interval = 2024:2030,
+                        .yield_baserate=0,
+                        # .yield_baserate=0.0821,
+                        .yield_absrates =c(0,..2,rep(..3,5)),
+                        .year_absrates =  0,
+                        .yield_changerates = rep(0,7),
+                        .area_baserate = 0,
+                        # .area_conschange1=sem1change,
+                        # .area_conschange2=sem2change ,
+                        .yield_yearrates = 0,
+                        .area_yearrates = c(0,0.03656799,0,0,0,0,0),
+                        .area_absrates = rep(0,7),
+                        .area_absrates1 = rep(0,7),
+                        .area_absrates2 = rep(0,7),
+                        # .yield_yearrates=c(0,0.08,0.0261,0.0261,0.0261),
+                        # .area_yearrates = c(0,10,0.0261,0.0261,0),
+                        .area_changerates = 0,
+                        .reg_provlist=reg_prov,
+                        .population = Pop_1625,
+                        .pastyr_foodcon=foodcon2023,
+                        .combine_summaries = TRUE,
+                        .suaproject = TRUE,
+                        .calam_matrix = matrix(c(0, 0,rep(3,12)),
+                                                  nrow=2,ncol=7,
+                                                  dimnames = list(c("Semester 1", "Semester 2"),
+                                                                  2024:2030)
+                                                  ),
+                           .percap =..5,
+                           .mr = ..4,
+                           .processing=4/100,
+                           .seeduse = 49.05,
+                           .feeds_waste = 6.5/100,
+                           .buffer_days = 60,
+                           .projection_level = "national",
+                           .change_level="national",
+                           .change_coverage = "philippines",
+                           .include_prov = TRUE,
+                           .include_reg = TRUE,
+                           .include_nat = TRUE,
+                           .scenarioname = "" ,
+                        baseline_include = TRUE
+)
+                     )
+
+
+gridresults2 <-  pmap(grid2,
+                     ~pay_project(.data = basedata2024,
+                        .se_tab=NULL,
+                        .yield_serates = c(0,-0.004,-0.002,-0.003),
+                        .year_interval = 2024:2030,
+                        .yield_baserate=0,
+                        # .yield_baserate=0.0821,
+                        .yield_absrates =c(0,..2,rep(..3,5)),
+                        .year_absrates =  0,
+                        .yield_changerates = rep(0,7),
+                        .area_baserate = 0,
+                        # .area_conschange1=sem1change,
+                        # .area_conschange2=sem2change ,
+                        .yield_yearrates = 0,
+                        .area_yearrates = c(0,0.03656799,0,0,0,0,0),
+                        .area_absrates = rep(0,7),
+                        .area_absrates1 = rep(0,7),
+                        .area_absrates2 = rep(0,7),
+                        # .yield_yearrates=c(0,0.08,0.0261,0.0261,0.0261),
+                        # .area_yearrates = c(0,10,0.0261,0.0261,0),
+                        .area_changerates = 0,
+                        .reg_provlist=reg_prov,
+                        .population = Pop_1625,
+                        .pastyr_foodcon=foodcon2023,
+                        .combine_summaries = TRUE,
+                        .suaproject = TRUE,
+                        .calam_matrix = matrix(c(0, 0,rep(3,12)),
+                                                  nrow=2,ncol=7,
+                                                  dimnames = list(c("Semester 1", "Semester 2"),
+                                                                  2024:2030)
+                                                  ),
+                           .percap =..5,
+                           .mr = ..4,
+                           .processing=4/100,
+                           .seeduse = 49.05,
+                           .feeds_waste = 6.5/100,
+                           .buffer_days = 60,
+                           .projection_level = "national",
+                           .change_level="national",
+                           .change_coverage = "philippines",
+                           .include_prov = TRUE,
+                           .include_reg = TRUE,
+                           .include_nat = TRUE,
+                           .scenarioname = "" ,
+                        baseline_include = TRUE
+)
+                     )
+
+gridresults <-  pmap(grid,
+                     ~pay_project(.data = basedata2024,
+                        .se_tab=NULL,
+                        .yield_serates = c(0,-0.004,-0.002,-0.003),
+                        .year_interval = 2024:2030,
+                        .yield_baserate=4.3/100,
+                        # .yield_baserate=0.0821,
+                        .yield_absrates = rep(0,7),
+                        .year_absrates =  0,
+                        .yield_changerates = rep(0,7),
+                        .area_baserate = 0,
+                        # .area_conschange1=sem1change,
+                        # .area_conschange2=sem2change ,
+                        .yield_yearrates = 0,
+                        .area_yearrates = c(0,0.03656799,0,0,0,0,0),
+                        .area_absrates = rep(0,7),
+                        .area_absrates1 = rep(0,7),
+                        .area_absrates2 = rep(0,7),
+                        # .yield_yearrates=c(0,0.08,0.0261,0.0261,0.0261),
+                        # .area_yearrates = c(0,10,0.0261,0.0261,0),
+                        .area_changerates = 0,
+                        .reg_provlist=reg_prov,
+                        .population = Pop_1625,
+                        .pastyr_foodcon=foodcon2023,
+                        .combine_summaries = TRUE,
+                        .suaproject = TRUE,
+                        .calam_matrix = matrix(c(0, 0,rep(3,12)),
+                                                  nrow=2,ncol=7,
+                                                  dimnames = list(c("Semester 1", "Semester 2"),
+                                                                  2024:2030)
+                                                  ),
+                           .percap =..2,
+                           .mr = ..1,
+                           .processing=4/100,
+                           .seeduse = 49.05,
+                           .feeds_waste = 6.5/100,
+                           .buffer_days = 60,
+                           .projection_level = "national",
+                           .change_level="national",
+                           .change_coverage = "philippines",
+                           .include_prov = TRUE,
+                           .include_reg = TRUE,
+                           .include_nat = TRUE,
+                           .scenarioname = "" ,
+                        baseline_include = TRUE
+)
+                     )
+
+names(gridresults2) <-  paste("prodrate",grid2$prodrate*100,"mr",grid2$.mr*100,"percap",grid2$.percap,sep="_")
+
+saveRDS(gridresults2,"Fixed_Prod_Simulations.rds")
+
+gridSuaform <-  map(gridresults,
+                     ~sua_format(.x$sua,.location="Philippines"))
+
+
+grid2Suaform <-  map(gridresults2,
+                     ~sua_format(.x$sua,.location="Philippines"))
+
+gridDTform <-  map(gridSuaform,
+                   ~.x[[".supply"]] %>%
+                     filter(!(variables %in% c("Area",
+                                               "Base Palay Production",
+                                               "Total Calamity loss"))) %>% 
+                     rbind(.x[[".imports"]]) %>% 
+                     mutate(group ="SUPPLY") %>% 
+                     rbind(.x[[".demand"]] %>% 
+                             mutate(group ="DEMAND")) %>% 
+                     rbind(.x[[".ssr"]] %>% 
+                             mutate(group = " ")) |> 
+                     datatable(rownames = FALSE,
+                               extensions = "Buttons",
+                               options = list(pageLength = 30,
+                                              ordering=FALSE,
+                                              dom='Bt', 
+                                              buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+                                              # rowGroup = list(dataSrc = 7),
+                                              columnDefs = list(
+                                                list(visible = FALSE, targets=9)
+                                                # list(targets=2:9, class="dt-right")
+                                              )
+                               )
+                     ) %>% 
+                     formatStyle(3:9,
+                                 `text-align` = "right") %>% 
+                     formatCurrency(3:9,
+                                    digits = 0,
+                                    currency ="",
+                                    interval=3,
+                                    rows = 9:18,
+                                    mark=","))
+
+
+gridxlform <-  map(gridSuaform,
+                   ~.x[[".supply"]] %>%
+                     filter(!(variables %in% c("Area",
+                                               "Base Palay Production",
+                                               "Total Calamity loss"))) %>% 
+                     rbind(.x[[".imports"]]) %>% 
+                     mutate(group ="SUPPLY") %>% 
+                     rbind(.x[[".demand"]] %>% 
+                             mutate(group ="DEMAND")) %>% 
+                     rbind(.x[[".ssr"]] %>% 
+                             mutate(group = " "))
+)
+
+gridxlform2 <-  map(grid2Suaform,
+                   ~.x[[".supply"]] %>%
+                     filter(!(variables %in% c("Area",
+                                               "Base Palay Production",
+                                               "Total Calamity loss"))) %>% 
+                     rbind(.x[[".imports"]]) %>% 
+                     mutate(group ="SUPPLY") %>% 
+                     rbind(.x[[".demand"]] %>% 
+                             mutate(group ="DEMAND")) %>% 
+                     rbind(.x[[".ssr"]] %>% 
+                             mutate(group = " "))
+)
+
+names(gridxlform2) <-  str_trunc(names(gridxlform2),31,ellipsis = "")
+write.xlsx(gridxlform2,"suaproject2.xlsx")
+
+gridresults$mr_63_percap_100$sua
+
+map_dfr(gridresults2,
+        ~.x$sua |> 
+          filter(location=="Philippines",eco=="alleco") |> 
+          select(year,Area_Harvested,aProduction,Production_rice,Yield,SuffRatio),
+        .id="Source") |> 
+  pivot_longer(Area_Harvested:SuffRatio,
+               names_to = "var",
+               values_to ="val") |> 
+  arrange(var,year) |> 
+  pivot_wider(names_from = c(var,year),
+              names_sep="_",
+              values_from="val") |> 
+  cbind(grid2) |> 
+  relocate(prodrate:.percap,.before=1) |> 
+  write.xlsx("summary5.xlsx")
+
+
+
+
+```
+
+## Fixed Prod 2024-2028
+
+```{r}
+gridresults3 <-  pmap(grid2,
+                     ~pay_project(.data = basedata2024,
+                        .se_tab=NULL,
+                        .yield_serates = c(0,-0.004,-0.002,-0.003),
+                        .year_interval = 2024:2028,
+                        .yield_baserate=0,
+                        # .yield_baserate=0.0821,
+                        .yield_absrates =c(0,..2,rep(..3,3)),
+                        .year_absrates =  0,
+                        .yield_changerates = rep(0,5),
+                        .area_baserate = 0,
+                        # .area_conschange1=sem1change,
+                        # .area_conschange2=sem2change ,
+                        .yield_yearrates = 0,
+                        .area_yearrates = c(0,0.03656799,0,0,0),
+                        .area_absrates = rep(0,5),
+                        .area_absrates1 = rep(0,5),
+                        .area_absrates2 = rep(0,5),
+                        # .yield_yearrates=c(0,0.08,0.0261,0.0261,0.0261),
+                        # .area_yearrates = c(0,10,0.0261,0.0261,0),
+                        .area_changerates = 0,
+                        .reg_provlist=reg_prov,
+                        .population = Pop_1625c,
+                        .pastyr_foodcon=foodcon2023,
+                        .combine_summaries = TRUE,
+                        .suaproject = TRUE,
+                        .calam_matrix = matrix(c(0, 0,rep(3,8)),nrow=2,ncol=5,dimnames = list(c("Semester 1", "Semester 2"),2024:2028)),
+                           .percap =..5,
+                           .mr = ..4,
+                           .processing=4/100,
+                           .seeduse = 49.05,
+                           .feeds_waste = 6.5/100,
+                           .buffer_days = 60,
+                           .projection_level = "national",
+                           .change_level="national",
+                           .change_coverage = "philippines",
+                           .include_prov = TRUE,
+                           .include_reg = TRUE,
+                           .include_nat = TRUE,
+                           .scenarioname = "" ,
+                        baseline_include = TRUE
+)
+                     )
+
+names(gridresults3) <-  paste("prodrate",grid2$prodrate*100,"mr",grid2$.mr*100,"percap",grid2$.percap,sep="_")
+
+saveRDS(gridresults3,"Fixed_Prod_Simulations.rds")
+```
+
+## SUA regs
+
+```{r sua_reg}
+
+sua_regv2 <- combine_regions("./SUA regions v2",
+                sua_default,
+                reg_prov)
+
+sua_regv2$sua |> 
+  group_by(location) |> 
+  count() |> 
+  arrange(desc(n)) |> 
+  View()
+
+saveRDS(sua_regv2,"sua_new_v2.rds")
+```
+
+## SUA 2023 (Malusog Rice Data requests)
+
+```{r sua2023}
+
+
+psapay <-  import_fromDrive(linkid ="https://drive.google.com/file/d/1zXXLqrHeqkb1G0gTC2qpYSJJ9snaM98R/view?usp=drive_link",filetype = "csv")
+
+psapay |> 
+  filter(ecosystem=="all ecosystem",
+         year_type == "annual",
+         variables == "prod",
+         year=="2023") |> 
+  mutate(location = clean_location(location)) |> 
+  left_join(foodcon2023) |> 
+  mutate(surplus_deficit = value - foodcon,
+         interpretation = if_else(surplus_deficit>0, "surplus","deficit")) |> 
+  select(location,type,production = value,utilization=foodcon, surplus_deficit,interpretation) |> 
+write.xlsx('surplus_deficit2023.xlsx')
+
+foodcon2023
+
+sua_2023 <- pay_project(.data = basedata,
+                        .se_tab=NULL,
+                        .year_interval=2023,
+                        .yield_matrix = NULL,
+                        .yield_baserate= 0,
+                        .yield_serates = 0,
+                        .yield_absrates = 0,
+                        .yield_changerates = 0,
+                        .area_direction = "inverse",
+                        .area_matrix = NULL,
+                        .area_baserate = 0,
+                        .area_serates =0,
+                        .area_absrates = 0,
+                        .area_absrates1 = 0,
+                        .area_absrates2 = 0,
+                        .area_conschange2=0,
+                        .area_changerates = 0,
+                        .year_absrates = 0,
+                        .yield_yearrates = 0,
+                        .area_yearrates = 0,
+                        .cagr_cuts = c(-Inf,-5,-2.5,0,2.5,5,Inf),
+                        .cagr_changerates = 0,
+                        .reg_provlist=reg_prov,
+                        .population = Pop_1625,
+                        .pastyr_foodcon=foodcon2023,
+                        .combine_summaries = TRUE,
+                        .suaproject = TRUE, 
+                        .percap =120,
+                        .mr = 65.4/100,
+                        .processing=4/100,
+                        .seeduse = 49.05,
+                        .feeds_waste = 6.5/100,
+                        .buffer_days = 60,
+                        .projection_level = "national",
+                        .change_level="national",
+                        .change_coverage = "philippines",
+                        .include_prov = TRUE,
+                        .include_reg = TRUE,
+                        .include_nat = TRUE,
+                        .scenarioname = "" ,
+                        baseline_include = TRUE
+)
+
+```
